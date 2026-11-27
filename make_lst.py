@@ -21,6 +21,7 @@ from places import PLACES
 PROJECT = "climate-2026"
 YEARS = (2021, 2025)  # 2021~2025년 여름 (Landsat 9 발사 이후 포함)
 HALF_KM = 7  # 동네 중심에서 위아래·좌우 7km (14km 네모)
+RES_M = 30  # Landsat 열적외 자료의 칸 크기(m)
 VIS_MIN, VIS_MAX = 25, 50  # 색 범위(℃). 모든 동네를 같은 색 범위로 그려야 서로 비교할 수 있어요
 PALETTE = ["313695", "4575b4", "74add1", "abd9e9", "e0f3f8", "ffffbf", "fee090", "fdae61", "f46d43", "d73027", "a50026"]
 OUT = Path(__file__).parent / "data" / "lst"
@@ -60,8 +61,11 @@ def main():
         ).getInfo()
         center = lst.reduceRegion(ee.Reducer.mean(), ee.Geometry.Point([lon, lat]).buffer(300), 30).getInfo()
 
+        # 30m 칸 하나 = 그림 1픽셀 (적응 영수증과 같은 원본 해상도). 웹지도와 같은 좌표계(EPSG:3857)로 받아야
+        # 지도에 겹쳤을 때 칸이 어긋나지 않아요.
+        px = round(2 * HALF_KM * 1000 / RES_M)
         url = lst.getThumbURL({
-            "region": region, "dimensions": 600, "format": "png",
+            "region": region, "dimensions": f"{px}x{px}", "crs": "EPSG:3857", "format": "png",
             "min": VIS_MIN, "max": VIS_MAX, "palette": PALETTE,
         })
         png = OUT / f"lst_{i:02d}.png"
@@ -79,7 +83,7 @@ def main():
         }
         print(ascii(name), index[name])
 
-    meta = {"years": YEARS, "vis": [VIS_MIN, VIS_MAX], "palette": PALETTE, "places": index}
+    meta = {"years": YEARS, "vis": [VIS_MIN, VIS_MAX], "palette": PALETTE, "res_m": RES_M, "places": index}
     (OUT / "index.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     print("done", len(index))
 

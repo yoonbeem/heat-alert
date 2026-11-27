@@ -33,6 +33,8 @@ def deck(info: dict, lat: float, lon: float, shelters: pd.DataFrame | None, opac
             image=pdk.types.String(png_data_uri(info["file"])),
             bounds=[[west, south], [west, north], [east, north], [east, south]],
             opacity=opacity,
+            # 칸 사이를 부드럽게 섞지 말고 30m 칸을 네모 그대로 보여 주기 (적응 영수증의 'nearest' 방식)
+            texture_parameters={"minFilter": "nearest", "magFilter": "nearest"},
         )
     ]
     if shelters is not None and len(shelters):
@@ -64,7 +66,7 @@ def deck(info: dict, lat: float, lon: float, shelters: pd.DataFrame | None, opac
     )
     return pdk.Deck(
         layers=layers,
-        initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=11.3),
+        initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=14),  # 동네 주변 약 3km가 보이는 크기: 30m 칸이 네모로 또렷하게 보여요
         tooltip={"text": "{이름}"},
         map_style="light",
     )
