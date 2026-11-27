@@ -4,6 +4,7 @@
 Open-Meteo에서 기상청 API로 바꿀 때 이 파일만 고치면 됩니다.
 """
 import math
+import time
 from datetime import date, timedelta
 
 import pandas as pd
@@ -38,18 +39,54 @@ def fetch_hourly(lat: float, lon: float, start: date | None = None, end: date | 
         params["start_date"] = start.isoformat()
         params["end_date"] = (end + timedelta(days=1)).isoformat()
 
-    resp = requests.get(url, params=params, timeout=20)
-    resp.raise_for_status()
-    hourly = resp.json()["hourly"]
-    df = pd.DataFrame(
-        {
-            "시각": pd.to_datetime(hourly["time"]),
-            "기온": hourly["temperature_2m"],
-            "습도": hourly["relative_humidity_2m"],
-        }
-    ).dropna()
+    try:
+        hourly = _get_json(url, params)["hourly"]
+        df = pd.DataFrame(
+            {"시각": pd.to_datetime(hourly["time"]), "기온": hourly["temperature_2m"], "습도": hourly["relative_humidity_2m"]}
+        )
+    except Exception:
+        # Open-Meteo가 끝내 답이 없으면, 예보는 노르웨이 기상청(MET Norway) 무료 예보로 대신 받아요
+        if start is not None:
+            raise
+        df = _met_norway(lat, lon)
+    df = df.dropna()
     df["체감온도"] = [feels_like(t, rh) for t, rh in zip(df["기온"], df["습도"])]
     return df
+
+
+def _get_json(url, params, tries=3):
+    """인터넷 서버가 잠깐 바쁠 수 있어서, 실패하면 1초·2초 쉬고 최대 3번까지 다시 물어봐요."""
+    last = None
+    for i in range(tries):
+        try:
+            resp = requests.get(url, params=params, timeout=(5, 12))
+            if resp.status_code == 429 or resp.status_code >= 500:  # 너무 많이 물어봤거나 서버 오류
+                raise requests.HTTPError(f"{resp.status_code}")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            last = e
+            time.sleep(2 ** i)
+    raise last
+
+
+def _met_norway(lat, lon) -> pd.DataFrame:
+    resp = requests.get(
+        "https://api.met.no/weatherapi/locationforecast/2.0/compact",
+        params={"lat": round(lat, 3), "lon": round(lon, 3)},
+        headers={"User-Agent": "heat-alert-student-app/1.0"},  # MET Norway는 앱 이름을 꼭 적으라고 해요
+        timeout=(5, 15),
+    )
+    resp.raise_for_status()
+    rows = []
+    for step in resp.json()["properties"]["timeseries"]:
+        d = step["data"]["instant"]["details"]
+        rows.append({"시각": step["time"], "기온": d.get("air_temperature"), "습도": d.get("relative_humidity")})
+    df = pd.DataFrame(rows)
+    # 세계 표준시(UTC) → 한국 시각, 앞으로 4일만
+    df["시각"] = pd.to_datetime(df["시각"]).dt.tz_convert("Asia/Seoul").dt.tz_localize(None)
+    df = df[df["시각"] < df["시각"].min().normalize() + pd.Timedelta(days=4)]
+    return df.set_index("시각").resample("1h").interpolate().reset_index()
 
 
 def feels_like(ta: float, rh: float) -> float:

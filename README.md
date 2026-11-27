@@ -36,6 +36,14 @@
   그래서 PC에서 `make_snapshot.py`로 만든 `data\shelters.csv`(저장본)를 GitHub에 같이 올리고, 클라우드 앱은 그 파일을 읽어요.
   쉼터 목록을 새로 고치려면 PC에서 `.\.venv\Scripts\python.exe make_snapshot.py` 실행 후 `data` 폴더를 다시 올리면 돼요.
 
+## 동(읍면동) 단위 (2026-11 추가)
+
+- `data\dongs.csv`: 전국 행정동 3,559곳의 이름과 중심 좌표 (`make_dongs.py`, 경계 자료 vuski/admdongkor)
+- `data\lst_sgg\`: 시군구 256곳의 30m 여름 지표면온도 그림 (`make_lst_sgg.py`, 시도 코드별 폴더)
+- `data\dong_lst.csv`: 동마다 중심·주변 1km 지표면온도 숫자 (`make_lst_stats.py`)
+- 화면 꾸미기는 `style.py`, 지도는 `satellite.py`(MapLibre + Esri 영상)
+- 날씨는 Open-Meteo가 늦으면 3번까지 다시 묻고, 그래도 안 되면 예보는 MET Norway로 대신 받아요.
+
 ## 위성 열지도 (지표면온도)
 
 - Landsat 8·9 위성의 지표면온도(ST_B10), 2021~2025년 6~8월 구름 없는 사진의 중앙값, 동네 중심 14km 네모.
