@@ -18,8 +18,8 @@ CSV_PATH = Path(__file__).parent / "data" / "shelters.csv"
 
 # 기관마다 열 이름이 조금씩 달라서, 흔히 쓰는 이름들을 우리 표의 이름으로 바꿔 준다.
 COLUMN_ALIASES = {
-    "이름": ["쉼터명칭", "쉼터명", "시설명", "RSTR_NM", "restNm"],
-    "주소": ["도로명주소", "상세주소", "소재지도로명주소", "RN_DTL_ADRES", "DTL_ADRES"],
+    "이름": ["이름", "쉼터명칭", "쉼터명", "시설명", "RSTR_NM", "restNm"],
+    "주소": ["주소", "도로명주소", "상세주소", "소재지도로명주소", "RN_DTL_ADRES", "DTL_ADRES"],
     "위도": ["위도", "LA", "lat", "LAT"],
     "경도": ["경도", "LO", "lon", "LOT", "LNG"],
     "이용가능인원": ["이용가능인원", "USE_PSBL_NMPR", "수용인원"],
@@ -123,7 +123,9 @@ def load_shelters(api_key: str | None) -> tuple[pd.DataFrame, str]:
         except Exception as e:  # 인터넷 서버(해외)에서 막히는 경우 등: 앱 전체가 멈추지 않게 한다
             api_error = e
     if CSV_PATH.exists():
-        return standardize(load_csv()), f"CSV 파일 ({CSV_PATH.name})"
+        date_file = CSV_PATH.parent / "shelters_date.txt"
+        when = date_file.read_text(encoding="utf-8").strip() if date_file.exists() else "날짜 모름"
+        return standardize(load_csv()), f"행정안전부_무더위쉼터 (재난안전데이터공유플랫폼, {when} 기준 저장본)"
     if api_error is not None:
         raise NoShelterData(f"무더위쉼터 API에 연결하지 못했어요: {api_error}")
     raise NoShelterData("무더위쉼터 인증키(SHELTER_API_KEY)가 설정되지 않았어요.")

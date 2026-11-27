@@ -32,6 +32,9 @@
 - 재난안전데이터공유플랫폼(safetydata.go.kr) `행정안전부_무더위쉼터` API (`DSSP-IF-10942`)
 - 인증키는 `.streamlit\secrets.toml`의 `SHELTER_API_KEY`에 넣어요.
 - 전국 약 6만 2천 곳을 처음 한 번 받는 데 30초쯤 걸리고, `data\shelters_api.csv`에 저장해 하루 동안 다시 씁니다.
+- 이 API는 국내(등록된) IP에서만 응답해서 해외 서버인 Streamlit Cloud에서는 `UNREGISTERED IP ERROR`가 나요.
+  그래서 PC에서 `make_snapshot.py`로 만든 `data\shelters.csv`(저장본)를 GitHub에 같이 올리고, 클라우드 앱은 그 파일을 읽어요.
+  쉼터 목록을 새로 고치려면 PC에서 `.\.venv\Scripts\python.exe make_snapshot.py` 실행 후 `data` 폴더를 다시 올리면 돼요.
 
 ## 다음 단계
 
