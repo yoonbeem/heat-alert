@@ -8,6 +8,7 @@ from datetime import date
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 import satellite
 import shelters
@@ -142,10 +143,9 @@ if info is None:
     st.info("위성 열지도는 동네 목록에 있는 곳만 미리 만들어 두었어요. 목록에서 동네를 골라 보세요.")
 else:
     y0, y1 = lst_index["years"]
-    opacity = st.slider("열지도 진하기", 0.2, 1.0, 0.75, 0.05)
-    st.pydeck_chart(satellite.deck(info, lat, lon, near, opacity))
     vmin, vmax = lst_index["vis"]
-    st.markdown(satellite.legend_html(vmin, vmax, lst_index["palette"]), unsafe_allow_html=True)
+    # 지도 안 왼쪽 위에서 '지도/영상' 배경과 투명도를 바꿀 수 있어요 (적응 영수증과 같은 방식)
+    components.html(satellite.map_html(info, lat, lon, near, vmin, vmax, lst_index["palette"]), height=530)
     s1, s2, s3 = st.columns(3)
     s1.metric("동네 중심 (반경 300m)", f"{info['center']} ℃" if info["center"] is not None else "-")
     s2.metric("뜨거운 곳 (상위 10%)", f"{info['p90']} ℃")
@@ -154,5 +154,6 @@ else:
         f"Landsat 8·9 위성의 지표면온도(땅 표면 온도) {y0}–{y1}년 6–8월, 구름 없는 사진 {info['scenes']}장의 중앙값이에요. "
         "위성이 오전 11시쯤 지나갈 때 잰 값이고, 공기 온도가 아니라 땅이 달궈진 정도라서 기온보다 훨씬 높게 나와요. "
         "빨간 곳은 아스팔트·지붕·공장이 많은 곳, 파란 곳은 숲·강·논이에요. 검은 점은 우리 동네, 파란 점은 무더위쉼터예요. "
-        "자료: NASA·USGS Landsat (Google Earth Engine으로 계산)"
+        "투명도를 낮추면 아래 위성사진에서 어떤 건물·도로가 뜨거운지 볼 수 있어요. "
+        "자료: NASA·USGS Landsat (Google Earth Engine으로 계산), 배경 영상: Esri World Imagery"
     )

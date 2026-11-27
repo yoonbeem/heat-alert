@@ -1,16 +1,20 @@
 """미리 만들어 둔 위성 지표면온도 그림(data/lst/)을 지도 위에 겹쳐 그리는 부분.
 
 그림은 make_lst.py가 Earth Engine에서 만들어 저장한 PNG예요.
-여기서는 그 그림을 pydeck(지도 그리기 도구)의 BitmapLayer로 '지도 위 네모 칸'에 붙입니다.
+적응 영수증과 같은 방식으로 그립니다.
+- 지도 엔진: MapLibre GL (웹 지도 라이브러리)
+- 배경: '일반지도'(CARTO) 또는 '영상'(Esri World Imagery, 건물이 보이는 항공·위성 사진)
+- 열지도: 30m 칸을 섞지 않고(nearest) 반투명으로 겹치고, 투명도 슬라이더로 조절
+Streamlit 안에 작은 웹페이지(HTML)를 넣는 st.components.v1.html 로 보여 줘요.
 """
 import base64
 import json
 from pathlib import Path
 
 import pandas as pd
-import pydeck as pdk
 
 LST_DIR = Path(__file__).parent / "data" / "lst"
+MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl"
 
 
 def load_index() -> dict | None:
@@ -24,59 +28,93 @@ def png_data_uri(file_name: str) -> str:
     return "data:image/png;base64," + base64.b64encode(data).decode()
 
 
-def deck(info: dict, lat: float, lon: float, shelters: pd.DataFrame | None, opacity: float) -> pdk.Deck:
+def _points(lat, lon, shelters: pd.DataFrame | None) -> dict:
+    feats = [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [lon, lat]},
+              "properties": {"kind": "me", "name": "우리 동네"}}]
+    if shelters is not None:
+        for _, r in shelters.iterrows():
+            feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [float(r["경도"]), float(r["위도"])]},
+                          "properties": {"kind": "shelter", "name": str(r["이름"])}})
+    return {"type": "FeatureCollection", "features": feats}
+
+
+def map_html(info: dict, lat: float, lon: float, shelters: pd.DataFrame | None,
+             vmin: float, vmax: float, palette: list[str], height: int = 520) -> str:
     west, south, east, north = info["bounds"]
-    layers = [
-        pdk.Layer(
-            "BitmapLayer",
-            # pdk.types.String으로 감싸야 pydeck이 '계산식'이 아니라 '글자 그대로'로 받아들여요
-            image=pdk.types.String(png_data_uri(info["file"])),
-            bounds=[[west, south], [west, north], [east, north], [east, south]],
-            opacity=opacity,
-            # 칸 사이를 부드럽게 섞지 말고 30m 칸을 네모 그대로 보여 주기 (적응 영수증의 'nearest' 방식)
-            texture_parameters={"minFilter": "nearest", "magFilter": "nearest"},
-        )
+    cfg = {
+        "center": [lon, lat],
+        "image": png_data_uri(info["file"]),
+        # 그림의 네 귀퉁이: 왼쪽 위, 오른쪽 위, 오른쪽 아래, 왼쪽 아래
+        "corners": [[west, north], [east, north], [east, south], [west, south]],
+        "points": _points(lat, lon, shelters),
+    }
+    gradient = ", ".join(f"#{c}" for c in palette)
+    return f"""
+<link href="{MAPLIBRE}.css" rel="stylesheet">
+<script src="{MAPLIBRE}.js"></script>
+<style>
+  body {{ margin:0; font-family: sans-serif; }}
+  #wrap {{ position:relative; height:{height}px; border-radius:12px; overflow:hidden; }}
+  #map {{ position:absolute; inset:0; }}
+  .panel {{ position:absolute; z-index:2; background:rgba(255,255,255,.9); border-radius:999px;
+           padding:4px; display:flex; gap:4px; align-items:center; box-shadow:0 1px 4px rgba(0,0,0,.2); font-size:13px; }}
+  .panel button {{ border:0; background:transparent; padding:5px 12px; border-radius:999px; cursor:pointer; font-size:13px; }}
+  .panel button.on {{ background:#2f5d50; color:#fff; }}
+  #base {{ top:10px; left:10px; }}
+  #op {{ top:10px; left:170px; padding:4px 12px; }}
+  #legend {{ position:absolute; z-index:2; right:10px; bottom:30px; background:rgba(255,255,255,.9); border-radius:10px;
+            padding:8px 10px; font-size:12px; width:190px; box-shadow:0 1px 4px rgba(0,0,0,.2); }}
+  #legend .bar {{ height:10px; border-radius:5px; background:linear-gradient(to right, {gradient}); margin:4px 0; }}
+  #legend .row {{ display:flex; justify-content:space-between; }}
+  .dot {{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle; }}
+</style>
+<div id="wrap">
+  <div id="map"></div>
+  <div id="base" class="panel"><button data-b="map">지도</button><button data-b="sat" class="on">영상</button></div>
+  <div id="op" class="panel">투명도 <input id="opacity" type="range" min="0" max="100" value="60" style="width:110px"></div>
+  <div id="legend"><b>여름 한낮 지표면온도</b>
+    <div class="bar"></div><div class="row"><span>{vmin}℃↓</span><span>{vmax}℃↑</span></div>
+    <div><span class="dot" style="background:#111"></span>우리 동네 <span class="dot" style="background:#1c7ed6;margin-left:8px"></span>무더위쉼터</div>
+  </div>
+</div>
+<script>
+const C = {json.dumps(cfg, ensure_ascii=False)};
+const map = new maplibregl.Map({{
+  container: "map", center: C.center, zoom: 15, maxZoom: 18, attributionControl: {{compact: true}},
+  style: {{
+    version: 8,
+    sources: {{
+      basemap: {{ type: "raster", tileSize: 256, attribution: "© OpenStreetMap © CARTO",
+        tiles: ["https://a.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}.png",
+                "https://b.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}.png"] }},
+      sat: {{ type: "raster", tileSize: 256, attribution: "Esri World Imagery",
+        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}"] }},
+      lst: {{ type: "image", url: C.image, coordinates: C.corners }}
+    }},
+    layers: [
+      {{ id: "basemap", type: "raster", source: "basemap", layout: {{ visibility: "none" }} }},
+      {{ id: "sat", type: "raster", source: "sat" }},
+      {{ id: "lst", type: "raster", source: "lst",
+         paint: {{ "raster-opacity": 0.6, "raster-resampling": "nearest", "raster-fade-duration": 0 }} }}
     ]
-    if shelters is not None and len(shelters):
-        layers.append(
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=shelters.rename(columns={"위도": "lat", "경도": "lon"})[["lat", "lon", "이름"]],
-                get_position="[lon, lat]",
-                get_fill_color=[28, 126, 214],
-                get_line_color=[255, 255, 255],
-                stroked=True,
-                line_width_min_pixels=1,
-                radius_min_pixels=5,
-                pickable=True,
-            )
-        )
-    layers.append(
-        pdk.Layer(
-            "ScatterplotLayer",
-            data=pd.DataFrame({"lat": [lat], "lon": [lon], "이름": ["우리 동네"]}),
-            get_position="[lon, lat]",
-            get_fill_color=[0, 0, 0],
-            get_line_color=[255, 255, 255],
-            stroked=True,
-            line_width_min_pixels=2,
-            radius_min_pixels=7,
-            pickable=True,
-        )
-    )
-    return pdk.Deck(
-        layers=layers,
-        initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=14),  # 동네 주변 약 3km가 보이는 크기: 30m 칸이 네모로 또렷하게 보여요
-        tooltip={"text": "{이름}"},
-        map_style="light",
-    )
-
-
-def legend_html(vmin: float, vmax: float, palette: list[str]) -> str:
-    stops = ", ".join(f"#{c}" for c in palette)
-    return (
-        f'<div style="display:flex;align-items:center;gap:8px;font-size:0.85rem">'
-        f"<span>{vmin}℃ 이하</span>"
-        f'<div style="flex:1;height:12px;border-radius:6px;background:linear-gradient(to right, {stops})"></div>'
-        f"<span>{vmax}℃ 이상</span></div>"
-    )
+  }}
+}});
+map.addControl(new maplibregl.NavigationControl({{showCompass: false}}), "top-right");
+map.addControl(new maplibregl.ScaleControl({{maxWidth: 120, unit: "metric"}}), "bottom-left");
+document.querySelectorAll("#base button").forEach(b => b.onclick = () => {{
+  document.querySelectorAll("#base button").forEach(x => x.classList.toggle("on", x === b));
+  map.setLayoutProperty("sat", "visibility", b.dataset.b === "sat" ? "visible" : "none");
+  map.setLayoutProperty("basemap", "visibility", b.dataset.b === "map" ? "visible" : "none");
+}});
+document.getElementById("opacity").oninput = e => map.setPaintProperty("lst", "raster-opacity", e.target.value / 100);
+// 점(우리 동네, 쉼터)은 HTML 표시(Marker)로 올려요. 누르면 이름이 나와요.
+C.points.features.forEach(f => {{
+  const me = f.properties.kind === "me";
+  const el = document.createElement("div");
+  el.style.cssText = `width:${{me ? 16 : 12}}px;height:${{me ? 16 : 12}}px;border-radius:50%;` +
+    `background:${{me ? "#111" : "#1c7ed6"}};border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.5);cursor:pointer`;
+  new maplibregl.Marker({{element: el}}).setLngLat(f.geometry.coordinates)
+    .setPopup(new maplibregl.Popup({{offset: 10, closeButton: false}}).setText(f.properties.name)).addTo(map);
+}});
+</script>
+"""
