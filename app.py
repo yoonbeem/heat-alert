@@ -9,30 +9,11 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+import satellite
 import shelters
 import weather
 
-# 동네 목록: 이름 → (위도, 경도). 원하는 동네를 이 목록에 한 줄 추가하면 됩니다.
-PLACES = {
-    "서울 (종로)": (37.5730, 126.9794),
-    "부산": (35.1796, 129.0756),
-    "대구": (35.8714, 128.6014),
-    "인천": (37.4563, 126.7052),
-    "광주": (35.1595, 126.8526),
-    "대전": (36.3504, 127.3845),
-    "울산": (35.5384, 129.3114),
-    "세종": (36.4800, 127.2890),
-    "수원": (37.2636, 127.0286),
-    "춘천": (37.8813, 127.7298),
-    "강릉": (37.7519, 128.8761),
-    "청주": (36.6424, 127.4890),
-    "전주": (35.8242, 127.1480),
-    "포항": (36.0190, 129.3435),
-    "안동": (36.5684, 128.7294),
-    "의성": (36.3527, 128.6970),
-    "창원": (35.2280, 128.6811),
-    "제주": (33.4996, 126.5312),
-}
+from places import PLACES
 
 LEVEL_COLOR = {"폭염경보": "🔴", "폭염주의보": "🟠", "폭염 관심": "🟡", "폭염 걱정 없음": "🟢"}
 TIPS = {
@@ -149,5 +130,29 @@ try:
     )
     st.caption(f"쉼터 자료: {source}")
 except shelters.NoShelterData as e:
+    near = None
     st.map(me, color="color", size="size", zoom=10)
     st.info(str(e))
+
+# ---- 위성으로 본 여름 한낮 지표면온도(열섬) ----
+st.markdown("#### 🛰️ 위성으로 본 우리 동네 여름 열지도")
+lst_index = satellite.load_index()
+info = lst_index["places"].get(place) if lst_index else None
+if info is None:
+    st.info("위성 열지도는 동네 목록에 있는 곳만 미리 만들어 두었어요. 목록에서 동네를 골라 보세요.")
+else:
+    y0, y1 = lst_index["years"]
+    opacity = st.slider("열지도 진하기", 0.2, 1.0, 0.75, 0.05)
+    st.pydeck_chart(satellite.deck(info, lat, lon, near, opacity))
+    vmin, vmax = lst_index["vis"]
+    st.markdown(satellite.legend_html(vmin, vmax, lst_index["palette"]), unsafe_allow_html=True)
+    s1, s2, s3 = st.columns(3)
+    s1.metric("동네 중심 (반경 300m)", f"{info['center']} ℃" if info["center"] is not None else "-")
+    s2.metric("뜨거운 곳 (상위 10%)", f"{info['p90']} ℃")
+    s3.metric("시원한 곳 (하위 10%)", f"{info['p10']} ℃")
+    st.caption(
+        f"Landsat 8·9 위성의 지표면온도(땅 표면 온도) {y0}~{y1}년 6~8월, 구름 없는 사진 {info['scenes']}장의 중앙값이에요. "
+        "위성이 오전 11시쯤 지나갈 때 잰 값이고, 공기 온도가 아니라 땅이 달궈진 정도라서 기온보다 훨씬 높게 나와요. "
+        "빨간 곳은 아스팔트·지붕·공장이 많은 곳, 파란 곳은 숲·강·논이에요. 검은 점은 우리 동네, 파란 점은 무더위쉼터예요. "
+        "자료: NASA·USGS Landsat (Google Earth Engine으로 계산)"
+    )

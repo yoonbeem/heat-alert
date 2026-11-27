@@ -36,6 +36,13 @@
   그래서 PC에서 `make_snapshot.py`로 만든 `data\shelters.csv`(저장본)를 GitHub에 같이 올리고, 클라우드 앱은 그 파일을 읽어요.
   쉼터 목록을 새로 고치려면 PC에서 `.\.venv\Scripts\python.exe make_snapshot.py` 실행 후 `data` 폴더를 다시 올리면 돼요.
 
+## 위성 열지도 (지표면온도)
+
+- Landsat 8·9 위성의 지표면온도(ST_B10), 2021~2025년 6~8월 구름 없는 사진의 중앙값, 동네 중심 14km 네모.
+- Earth Engine으로 PC에서 미리 계산해 `data\lst\`(PNG 18장 + index.json)에 저장하고, 앱은 그 그림을 지도에 겹쳐요.
+  (클라우드 서버에서는 Earth Engine 로그인이 안 되기 때문)
+- 다시 만들기: `..\climate\.venv\Scripts\python.exe make_lst.py` (동네를 `places.py`에 추가했을 때도 이걸 다시 실행)
+
 ## 다음 단계
 
 - 자료 출처를 기상청 단기예보 API로 바꾸기
