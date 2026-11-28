@@ -13,19 +13,30 @@ from pathlib import Path
 
 import pandas as pd
 
-DATA = Path(__file__).parent / "data"
+ROOT = Path(__file__).parent
+DATA = ROOT / "data"
 SGG_DIR = DATA / "lst_sgg"
 MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl"
+# 열지도 파일을 나눠 올린 폴더(열지도_올리기_1·2·3)째로 올라간 경우에도 찾을 수 있게, data 폴더 후보를 여러 개 둬요
+DATA_DIRS = [DATA] + sorted(p / "data" for p in ROOT.glob("열지도_올리기_*") if (p / "data").is_dir())
+
+
+def _find(rel: str) -> Path | None:
+    """여러 data 폴더 후보 가운데 rel 파일이 있는 곳 (나중에 올린 묶음을 먼저)."""
+    for d in reversed(DATA_DIRS):
+        if (d / rel).exists():
+            return d / rel
+    return None
 
 
 def load_sgg_index() -> dict | None:
-    f = SGG_DIR / "index.json"
-    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    f = _find("lst_sgg/index.json")
+    return json.loads(f.read_text(encoding="utf-8")) if f else None
 
 
 def load_dong_stats() -> pd.DataFrame | None:
-    f = DATA / "dong_lst.csv"
-    return pd.read_csv(f, dtype={"코드": str}, encoding="utf-8-sig").set_index("코드") if f.exists() else None
+    f = _find("dong_lst.csv")
+    return pd.read_csv(f, dtype={"코드": str}, encoding="utf-8-sig").set_index("코드") if f else None
 
 
 def overlay_for(index: dict | None, sgg_code: str) -> dict | None:
@@ -33,7 +44,10 @@ def overlay_for(index: dict | None, sgg_code: str) -> dict | None:
     if not index or sgg_code not in index["sgg"]:
         return None
     info = index["sgg"][sgg_code]
-    data = (SGG_DIR / info["file"]).read_bytes()
+    f = _find(f"lst_sgg/{info['file']}")
+    if f is None:
+        return None
+    data = f.read_bytes()
     return {"uri": "data:image/png;base64," + base64.b64encode(data).decode(), "bounds": info["bounds"],
             "scenes": info.get("scenes")}
 
